@@ -1,57 +1,84 @@
 import throttle from 'lodash/throttle'
+import clamp from 'lodash/clamp'
+import isEqual from 'lodash/isEqual'
 
-const clamp = function (value, min, max) {
-  return Math.max(min, Math.min(value, max))  
+const toPrecision = function (num, precision) {
+  const p = precision | 0
+  return p > 0 ? parseFloat(num.toFixed(p)) : num
 }
 
-const vCtrlComponent = {
+const VueCtrlComponent = {
   name: 'v-ctrl',
   abstract: true,
   props: {
     direction: {
       type: String,
-      default: 'h'
+      default: 'h',
+      validator (val) {
+        return ['v', 'h', 'vh', 'hv'].indexOf(val) > -1
+      }
     },
     throttle: {
       type: Number,
       default: 80
+    },
+    precision: {
+      type: Number
     }
   },
 
   methods: {
-    onMousedown (e) {
+    msdown (e) {
       e.preventDefault()
-      document.addEventListener('mousemove', this.onMouseMove)
-      document.addEventListener('mouseup', this.onMouseUp)
-      this.updateValue(e)
+      document.addEventListener('mousemove', this.msmove)
+      document.addEventListener('mouseup', this.msup)
+      this.next(e)
     },
   
-    onMouseMove (e) {
+    msmove (e) {
       e.preventDefault()
-      this.updateValue(e)
+      this.next(e)
     },
   
-    onMouseUp (e) {
-      this.updateValue(e)
-      document.removeEventListener('mousemove', this.onMouseMove)
-      document.removeEventListener('mouseup', this.onMouseUp)
+    msup (e) {
+      this.next(e)
+      document.removeEventListener('mousemove', this.msmove)
+      document.removeEventListener('mouseup', this.msup)
     },
   
-    updateValue ({ clientX = 0, clientY = 0 } = {}) {
+    notify (val) {
+      if (isEqual(this.memo, val) === false) {
+        this.memo = val
+        this.$emit('change', val)
+      }
+    },
+
+    next ({ clientX = 0, clientY = 0 } = {}) {
+      const { direction, adjust } = this
       const rect = this.$el.getBoundingClientRect()
-      const { left, top, width, height } = rect
 
+      const { left, width } = rect
       const deltaX = clientX - left
+      const x = adjust(deltaX / width)
+
+      if (direction === 'h') {
+        return this.notify(x)
+      }
+  
+      const { top, height } = rect
       const deltaY = clientY - top
+      const y = adjust(deltaY / height)
 
-      const x = clamp(deltaX / width, 0, 1)
-      const y = clamp(deltaY / height, 0, 1)
+      if (direction === 'v') {
+        return this.notify(y)
+      }
 
-      const dir = this.direction
-      // eslint-disable-next-line
-      const data = dir === 'vh' ? { x, y } : (dir === 'v' ? y : x)
+      // both direction
+      this.notify([x, y])
+    },
 
-      this.$emit('change', data)
+    adjust (num) {
+      return toPrecision(clamp(num, 0, 1), this.precision)
     }
   },
 
@@ -60,31 +87,29 @@ const vCtrlComponent = {
   },
 
   created () {
-    const { direction, onMousedown, onMouseMove } = this
+    const { msdown, msmove } = this
 
-    if (direction === 'hv') {
-      this.direction = 'vh'
-    }
+    this.msdown = msdown.bind(this)
+    this.msmove = throttle(msmove.bind(this), this.throttle)
 
-    this.onMousedown = onMousedown.bind(this)
-    this.onMouseMove = throttle(onMouseMove.bind(this), this.throttle)
+    this.memo = null
   },
 
   mounted () {
-    this.$el.addEventListener('mousedown', this.onMousedown)
+    this.$el.addEventListener('mousedown', this.msdown)
   },
 
   destroyed () {
-    this.$el.removeEventListener('mousedown', this.onMousedown)
+    this.$el.removeEventListener('mousedown', this.msdown)
   },
 
   install () {
-    Vue.component(vCtrlComponent.name, vCtrlComponent)
+    Vue.component(VueCtrlComponent.name, VueCtrlComponent)
   }
 }
 
 if (typeof window !== 'undefined' && window.Vue) {
-  Vue.use(vCtrlComponent)
+  Vue.use(VueCtrlComponent)
 }
 
-export default { vCtrlComponent }
+export default { VueCtrlComponent }

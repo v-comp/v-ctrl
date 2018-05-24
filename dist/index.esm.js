@@ -1,64 +1,92 @@
 import throttle from 'lodash/throttle';
+import clamp from 'lodash/clamp';
+import isEqual from 'lodash/isEqual';
 
-var clamp = function (value, min, max) {
-  return Math.max(min, Math.min(value, max))  
+var toPrecision = function (num, precision) {
+  var p = precision | 0;
+  return p > 0 ? parseFloat(num.toFixed(p)) : num
 };
 
-var vCtrlComponent = {
+var VueCtrlComponent = {
   name: 'v-ctrl',
   abstract: true,
   props: {
     direction: {
       type: String,
-      default: 'h'
+      default: 'h',
+      validator: function validator (val) {
+        return ['v', 'h', 'vh', 'hv'].indexOf(val) > -1
+      }
     },
     throttle: {
       type: Number,
       default: 80
+    },
+    precision: {
+      type: Number
     }
   },
 
   methods: {
-    onMousedown: function onMousedown (e) {
+    msdown: function msdown (e) {
       e.preventDefault();
-      document.addEventListener('mousemove', this.onMouseMove);
-      document.addEventListener('mouseup', this.onMouseUp);
-      this.updateValue(e);
+      document.addEventListener('mousemove', this.msmove);
+      document.addEventListener('mouseup', this.msup);
+      this.next(e);
     },
   
-    onMouseMove: function onMouseMove (e) {
+    msmove: function msmove (e) {
       e.preventDefault();
-      this.updateValue(e);
+      this.next(e);
     },
   
-    onMouseUp: function onMouseUp (e) {
-      this.updateValue(e);
-      document.removeEventListener('mousemove', this.onMouseMove);
-      document.removeEventListener('mouseup', this.onMouseUp);
+    msup: function msup (e) {
+      this.next(e);
+      document.removeEventListener('mousemove', this.msmove);
+      document.removeEventListener('mouseup', this.msup);
     },
   
-    updateValue: function updateValue (ref) {
+    notify: function notify (val) {
+      if (isEqual(this.memo, val) === false) {
+        this.memo = val;
+        this.$emit('change', val);
+      }
+    },
+
+    next: function next (ref) {
       if ( ref === void 0 ) ref = {};
       var clientX = ref.clientX; if ( clientX === void 0 ) clientX = 0;
       var clientY = ref.clientY; if ( clientY === void 0 ) clientY = 0;
 
+      var ref$1 = this;
+      var direction = ref$1.direction;
+      var adjust = ref$1.adjust;
       var rect = this.$el.getBoundingClientRect();
+
       var left = rect.left;
-      var top = rect.top;
       var width = rect.width;
-      var height = rect.height;
-
       var deltaX = clientX - left;
+      var x = adjust(deltaX / width);
+
+      if (direction === 'h') {
+        return this.notify(x)
+      }
+  
+      var top = rect.top;
+      var height = rect.height;
       var deltaY = clientY - top;
+      var y = adjust(deltaY / height);
 
-      var x = clamp(deltaX / width, 0, 1);
-      var y = clamp(deltaY / height, 0, 1);
+      if (direction === 'v') {
+        return this.notify(y)
+      }
 
-      var dir = this.direction;
-      // eslint-disable-next-line
-      var data = dir === 'vh' ? { x: x, y: y } : (dir === 'v' ? y : x);
+      // both direction
+      this.notify([x, y]);
+    },
 
-      this.$emit('change', data);
+    adjust: function adjust (num) {
+      return toPrecision(clamp(num, 0, 1), this.precision)
     }
   },
 
@@ -68,36 +96,33 @@ var vCtrlComponent = {
 
   created: function created () {
     var ref = this;
-    var direction = ref.direction;
-    var onMousedown = ref.onMousedown;
-    var onMouseMove = ref.onMouseMove;
+    var msdown = ref.msdown;
+    var msmove = ref.msmove;
 
-    if (direction === 'hv') {
-      this.direction = 'vh';
-    }
+    this.msdown = msdown.bind(this);
+    this.msmove = throttle(msmove.bind(this), this.throttle);
 
-    this.onMousedown = onMousedown.bind(this);
-    this.onMouseMove = throttle(onMouseMove.bind(this), this.throttle);
+    this.memo = null;
   },
 
   mounted: function mounted () {
-    this.$el.addEventListener('mousedown', this.onMousedown);
+    this.$el.addEventListener('mousedown', this.msdown);
   },
 
   destroyed: function destroyed () {
-    this.$el.removeEventListener('mousedown', this.onMousedown);
+    this.$el.removeEventListener('mousedown', this.msdown);
   },
 
   install: function install () {
-    Vue.component(vCtrlComponent.name, vCtrlComponent);
+    Vue.component(VueCtrlComponent.name, VueCtrlComponent);
   }
 };
 
 if (typeof window !== 'undefined' && window.Vue) {
-  Vue.use(vCtrlComponent);
+  Vue.use(VueCtrlComponent);
 }
 
-var index = { vCtrlComponent: vCtrlComponent };
+var index = { VueCtrlComponent: VueCtrlComponent }
 
 export default index;
 //# sourceMappingURL=index.esm.js.map
